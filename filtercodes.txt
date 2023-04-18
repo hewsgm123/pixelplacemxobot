@@ -1,0 +1,164 @@
+filter_data = {}
+
+filter_path = 'filter.json'
+
+if os.path.exists(filter_path):
+    with open(filter_path, 'r') as f:
+        filter_data = json.load(f)
+else:
+    filter_data = {}
+
+@bot.command()
+@commands.check(is_owner)
+@commands.before_invoke(record_usage)
+async def filter_add(ctx, keyword: str):
+    """Adds a keyword to the filter"""
+    with open('filter.json', 'r') as f:
+        filter_data = json.load(f)
+    filter_data.setdefault(str(ctx.guild.id), {})
+    filter_data[str(ctx.guild.id)].setdefault('keywords', [])
+    filter_data[str(ctx.guild.id)]['keywords'].append(keyword.lower())
+    with open('filter.json', 'w') as f:
+        json.dump(filter_data, f)
+    embed = guilded.Embed(title="Filter Info", description=f'{keyword.lower()} has been added to the filter', color=guilded.Color.from_rgb(50,52,61))
+    await ctx.reply(embed=embed)
+
+@bot.command()
+@commands.check(is_owner)
+@commands.before_invoke(record_usage)
+async def filter_remove(ctx, keyword_num: int):
+    """Removes a keyword from the filter"""
+    with open('filter.json', 'r') as f:
+        filter_data = json.load(f)
+    if str(ctx.guild.id) in filter_data and 'keywords' in filter_data[str(ctx.guild.id)]:
+        keywords = filter_data[str(ctx.guild.id)]['keywords']
+        if keyword_num <= 0 or keyword_num > len(keywords):
+            embed = guilded.Embed(title="Filter Info", description="Invalid keyword number", color=guilded.Color.from_rgb(50,52,61))
+            await ctx.reply(embed=embed)
+        else:
+            keyword = keywords[keyword_num - 1]
+            keywords.remove(keyword)
+            filter_data[str(ctx.guild.id)]['keywords'] = keywords
+            with open('filter.json', 'w') as f:
+                json.dump(filter_data, f)
+            embed = guilded.Embed(title="Filter Info", description=f'{keyword.lower()} has been removed from the filter', color=guilded.Color.from_rgb(50,52,61))
+            await ctx.reply(embed=embed)
+    else:
+        embed = guilded.Embed(title="Filter Info", description="The filter has no keywords set for this server", color=guilded.Color.from_rgb(50,52,61))
+        await ctx.reply(embed=embed)
+
+def enumerate_keywords(keywords):
+    enumerated_keywords = []
+    for i, keyword in enumerate(keywords):
+        enumerated_keywords.append(f'{i+1}. {keyword}')
+    return enumerated_keywords
+
+@bot.command()
+@commands.check(is_owner)
+@commands.before_invoke(record_usage)
+async def filter_action_add(ctx, *actions: str):
+    """Adds automation actions for the filter"""
+    valid_actions = ['user_warn', 'user_ban', 'user_tempban']
+    if len(actions) > 3:
+        embed = guilded.Embed(title="Filter Info", description="You can only select up to 3 actions.", color=guilded.Color.from_rgb(50, 52, 61))
+        return await ctx.reply(embed=embed)
+    for action in actions:
+        if action.lower() not in valid_actions:
+            embed = guilded.Embed(title="Filter Info", description=f'Invalid action specified: {action}', color=guilded.Color.from_rgb(50, 52, 61))
+            return await ctx.reply(embed=embed)
+    with open('filter.json', 'r') as f:
+        filter_data = json.load(f)
+    server_data = filter_data.get(str(ctx.guild.id))
+    keywords = server_data.get('keywords') if server_data and 'keywords' in server_data else []
+    current_actions = server_data.get('actions', [])
+    for action in actions:
+        if action.lower() not in current_actions:
+            current_actions.append(action.lower())
+    filter_data[str(ctx.guild.id)] = {'actions': current_actions, 'keywords': keywords}
+    with open('filter.json', 'w') as f:
+        json.dump(filter_data, f)
+    embed = guilded.Embed(title="Filter Info", description=f'{", ".join([a.lower() for a in actions])} actions have been added to the filter.', color=guilded.Color.from_rgb(50, 52, 61))
+    await ctx.reply(embed=embed)
+
+@bot.command()
+@commands.check(is_owner)
+@commands.before_invoke(record_usage)
+async def filter_action_remove(ctx, *actions: str):
+    """Removes the specified actions from the filter"""
+    valid_actions = ['user_warn', 'user_ban', 'user_tempban']
+    removed_actions = []
+    with open('filter.json', 'r') as f:
+        filter_data = json.load(f)
+    server_data = filter_data.get(str(ctx.guild.id))
+    if not server_data:
+        return await ctx.reply("Filter not set up for this server.")
+    server_actions = server_data.get('actions', [])
+    for action in actions:
+        if action.lower() not in valid_actions:
+            embed = guilded.Embed(title="Filter Info", description=f'Invalid action specified: {action}', color=guilded.Color.from_rgb(50,52,61))
+            await ctx.reply(embed=embed)
+            continue
+        if action.lower() in server_actions:
+            server_actions.remove(action.lower())
+            removed_actions.append(action.lower())
+    filter_data[str(ctx.guild.id)]['actions'] = server_actions
+    with open('filter.json', 'w') as f:
+        json.dump(filter_data, f)
+    if removed_actions:
+        embed = guilded.Embed(title="Filter Info", description=f'{", ".join(removed_actions)} actions have been removed from the filter', color=guilded.Color.from_rgb(50,52,61))
+        await ctx.reply(embed=embed)
+    else:
+        embed = guilded.Embed(title="Filter Info", description="No actions were removed from the filter", color=guilded.Color.from_rgb(50,52,61))
+        await ctx.reply(embed=embed)
+
+@bot.command()
+@commands.check(is_owner)
+@commands.before_invoke(record_usage)
+async def filter_action_list(ctx):
+    """Lists the current automation actions for the filter"""
+    with open('filter.json', 'r') as f:
+        filter_data = json.load(f)
+    server_data = filter_data.get(str(ctx.guild.id))
+    actions = server_data.get('actions') if server_data and 'actions' in server_data else []
+    if not actions:
+        embed = guilded.Embed(title="Filter Info", description="There are no automation actions set for the filter", color=guilded.Color.from_rgb(50,52,61))
+        return await ctx.reply(embed=embed)
+    embed = guilded.Embed(title="Filter Actions", description=f'The current automation actions \n{", ".join(actions)}\n', color=guilded.Color.from_rgb(50,52,61))
+    await ctx.reply(embed=embed)
+
+@bot.command()
+@commands.check(is_owner)
+@commands.before_invoke(record_usage)
+async def filter_keyword_list(ctx):
+    """Shows the current filter keyword list"""
+    with open('filter.json', 'r') as f:
+        filter_data = json.load(f)
+    server_data = filter_data.get(str(ctx.guild.id))
+    if server_data is None or not server_data.get('keywords'):
+        embed = guilded.Embed(title="Filter Info", description="There are no filter keywords set for this server", color=guilded.Color.from_rgb(50,52,61))
+        await ctx.send('There are no filter keywords set for this server.')
+        return
+    keywords = server_data['keywords']
+    keywords_list = '\n'.join([f"{i+1}. {keyword}" for i, keyword in enumerate(keywords)])
+    embed = guilded.Embed(title="Filter Info", description=f'The current filter keywords \n{keywords_list}\n', color=guilded.Color.from_rgb(50,52,61))
+    await ctx.reply(embed=embed)
+
+@bot.command()
+@commands.check(is_owner)
+@commands.before_invoke(record_usage)
+async def filter_toggle(ctx):
+    with open('filter.json', 'r') as f:
+        filter_data = json.load(f)
+    server_id = str(ctx.guild.id)
+    server_data = filter_data.get(server_id, {})
+    filter_enabled = not server_data.get('filter_enabled', False)
+    server_data['filter_enabled'] = filter_enabled
+    filter_data[server_id] = server_data
+    with open('filter.json', 'w') as f:
+        json.dump(filter_data, f, indent=4)
+    if filter_enabled:
+        embed = guilded.Embed(title="Filter Info", description="Filtering has been enabled", color=guilded.Color.from_rgb(50,52,61))
+        await ctx.reply(embed=embed)
+    else:
+        embed = guilded.Embed(title="Filter Info", description="Filtering has been disabled", color=guilded.Color.from_rgb(50,52,61))
+        await ctx.reply(embed=embed)
